@@ -13,24 +13,43 @@ st.set_page_config(
 )
 
 # ── Lazy-import TensorFlow so the page renders even before the model loads ────
+from pathlib import Path
+
 @st.cache_resource(show_spinner=False)
 def load_model():
     import tensorflow as tf
-    base = os.path.dirname(os.path.abspath(__file__))
-    paths = [
-        os.path.join(base, "models", "cats_dogs_cnn_model.h5"),
-        os.path.join(base, "models", "cats_dogs_cnn_model.keras"),
-        os.path.join(base, "cats_dogs_cnn_model.h5"),
-        os.path.join(base, "cats_dogs_cnn_model.keras"),
+    base = Path(__file__).resolve().parent
+    cwd = Path.cwd().resolve()
+
+    candidates = [
+        base / "models" / "cats_dogs_cnn_model.h5",
+        base / "models" / "cats_dogs_cnn_model.keras",
+        base / "cats_dogs_cnn_model.h5",
+        base / "cats_dogs_cnn_model.keras",
+        cwd / "models" / "cats_dogs_cnn_model.h5",
+        cwd / "models" / "cats_dogs_cnn_model.keras",
+        cwd / "cats_dogs_cnn_model.h5",
+        cwd / "cats_dogs_cnn_model.keras",
+        cwd.parent / "models" / "cats_dogs_cnn_model.h5",
+        cwd.parent / "models" / "cats_dogs_cnn_model.keras",
     ]
-    for p in paths:
-        if os.path.exists(p):
+
+    seen = set()
+    tried = []
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        tried.append(str(candidate))
+        if candidate.exists():
             try:
-                return tf.keras.models.load_model(p, compile=False), p
+                return tf.keras.models.load_model(str(candidate), compile=False), str(candidate)
             except Exception as e:
-                print(f"Failed to load {p}: {e}")
+                st.warning(f"Failed to load model at {candidate}: {e}")
                 continue
-    return None, None
+
+    return None, tried
 
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
@@ -311,6 +330,21 @@ if model is None:
     Place your trained model file (<code>cats_dogs_cnn_model.keras</code> or
     <code>cats_dogs_cnn_model.h5</code>) inside a <code>models/</code> folder
     next to this <code>app.py</code>, then restart.
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class='info-text' style='margin-top:1rem;'>
+    <b>Deployment check:</b> the app is searching for the model in the current
+    working directory and around the location of <code>app.py</code>.
+    </div>
+    """, unsafe_allow_html=True)
+
+    paths_html = "<br>".join(f"<code>{p}</code>" for p in model_path)
+    st.markdown(f"""
+    <div class='info-text' style='font-size:0.85rem; margin-top:0.5rem;'>
+    Expected model locations:<br>
+    {paths_html}
     </div>
     """, unsafe_allow_html=True)
 
