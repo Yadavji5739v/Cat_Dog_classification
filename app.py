@@ -18,24 +18,37 @@ from pathlib import Path
 @st.cache_resource(show_spinner=False)
 def load_model():
     import tensorflow as tf
+
+    class DenseCompat(tf.keras.layers.Dense):
+        def __init__(self, *args, quantization_config=None, **kwargs):
+            self.quantization_config = quantization_config
+            super().__init__(*args, **kwargs)
+
+        @classmethod
+        def from_config(cls, config):
+            config = config.copy()
+            config.pop("quantization_config", None)
+            return super().from_config(config)
+
     base = Path(__file__).resolve().parent
     cwd = Path.cwd().resolve()
 
     candidates = [
-        base / "models" / "cats_dogs_cnn_model.h5",
         base / "models" / "cats_dogs_cnn_model.keras",
-        base / "cats_dogs_cnn_model.h5",
+        base / "models" / "cats_dogs_cnn_model.h5",
         base / "cats_dogs_cnn_model.keras",
-        cwd / "models" / "cats_dogs_cnn_model.h5",
+        base / "cats_dogs_cnn_model.h5",
         cwd / "models" / "cats_dogs_cnn_model.keras",
-        cwd / "cats_dogs_cnn_model.h5",
+        cwd / "models" / "cats_dogs_cnn_model.h5",
         cwd / "cats_dogs_cnn_model.keras",
-        cwd.parent / "models" / "cats_dogs_cnn_model.h5",
+        cwd / "cats_dogs_cnn_model.h5",
         cwd.parent / "models" / "cats_dogs_cnn_model.keras",
+        cwd.parent / "models" / "cats_dogs_cnn_model.h5",
     ]
 
     seen = set()
     tried = []
+    errors = []
     for candidate in candidates:
         candidate = candidate.resolve()
         if candidate in seen:
@@ -44,12 +57,20 @@ def load_model():
         tried.append(str(candidate))
         if candidate.exists():
             try:
-                return tf.keras.models.load_model(str(candidate), compile=False), str(candidate)
+                return (
+                    tf.keras.models.load_model(
+                        str(candidate),
+                        compile=False,
+                        custom_objects={"Dense": DenseCompat},
+                    ),
+                    str(candidate),
+                    None,
+                )
             except Exception as e:
-                st.warning(f"Failed to load model at {candidate}: {e}")
+                errors.append(f"{candidate}: {e}")
                 continue
 
-    return None, tried
+    return None, tried, errors
 
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
@@ -321,12 +342,12 @@ st.markdown("<div class='hero-sub'>Deep Learning · Binary Image Classification 
 
 # ── Load model ────────────────────────────────────────────────────────────────
 with st.spinner("🔄 Loading neural network…"):
-    model, model_path = load_model()
+    model, model_path, load_errors = load_model()
 
 if model is None:
     st.markdown("""
     <div class='warn-box'>
-    ⚠️ <b>Model not found.</b><br>
+    ⚠️ <b>Model not found or failed to load.</b><br>
     Place your trained model file (<code>cats_dogs_cnn_model.keras</code> or
     <code>cats_dogs_cnn_model.h5</code>) inside a <code>models/</code> folder
     next to this <code>app.py</code>, then restart.
@@ -347,6 +368,15 @@ if model is None:
     {paths_html}
     </div>
     """, unsafe_allow_html=True)
+
+    if load_errors:
+        errors_html = "<br>".join(f"<code>{e}</code>" for e in load_errors)
+        st.markdown(f"""
+        <div class='warn-box' style='margin-top:1rem;'>
+        <b>Load errors:</b><br>
+        {errors_html}
+        </div>
+        """, unsafe_allow_html=True)
 
     # Show demo mode notice
     st.info("📌 Running in **Demo mode** – upload an image and the interface will appear, "
