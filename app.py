@@ -18,14 +18,18 @@ def load_model():
     import tensorflow as tf
     base = os.path.dirname(os.path.abspath(__file__))
     paths = [
-        os.path.join(base, "models", "cats_dogs_cnn_model.keras"),
         os.path.join(base, "models", "cats_dogs_cnn_model.h5"),
-        os.path.join(base, "cats_dogs_cnn_model.keras"),
+        os.path.join(base, "models", "cats_dogs_cnn_model.keras"),
         os.path.join(base, "cats_dogs_cnn_model.h5"),
+        os.path.join(base, "cats_dogs_cnn_model.keras"),
     ]
     for p in paths:
         if os.path.exists(p):
-            return tf.keras.models.load_model(p, compile=False), p
+            try:
+                return tf.keras.models.load_model(p, compile=False), p
+            except Exception as e:
+                print(f"Failed to load {p}: {e}")
+                continue
     return None, None
 
 
