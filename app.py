@@ -19,17 +19,7 @@ from pathlib import Path
 def load_model():
     import tensorflow as tf
 
-    keras_pkg = None
-    try:
-        import keras as keras_pkg_import
-        keras_pkg = keras_pkg_import
-    except Exception:
-        keras_pkg = None
-
-    base_dense = keras_pkg.layers.Dense if keras_pkg is not None else tf.keras.layers.Dense
-    model_loader = keras_pkg.models.load_model if keras_pkg is not None else tf.keras.models.load_model
-
-    class DenseCompat(base_dense):
+    class DenseCompat(tf.keras.layers.Dense):
         def __init__(self, *args, quantization_config=None, **kwargs):
             self.quantization_config = quantization_config
             super().__init__(*args, **kwargs)
@@ -68,7 +58,7 @@ def load_model():
         if candidate.exists():
             try:
                 return (
-                    model_loader(
+                    tf.keras.models.load_model(
                         str(candidate),
                         compile=False,
                         custom_objects={"Dense": DenseCompat},
