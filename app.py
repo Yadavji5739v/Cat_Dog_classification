@@ -19,7 +19,17 @@ from pathlib import Path
 def load_model():
     import tensorflow as tf
 
-    class DenseCompat(tf.keras.layers.Dense):
+    keras_pkg = None
+    try:
+        import keras as keras_pkg_import
+        keras_pkg = keras_pkg_import
+    except Exception:
+        keras_pkg = None
+
+    base_dense = keras_pkg.layers.Dense if keras_pkg is not None else tf.keras.layers.Dense
+    model_loader = keras_pkg.models.load_model if keras_pkg is not None else tf.keras.models.load_model
+
+    class DenseCompat(base_dense):
         def __init__(self, *args, quantization_config=None, **kwargs):
             self.quantization_config = quantization_config
             super().__init__(*args, **kwargs)
@@ -58,7 +68,7 @@ def load_model():
         if candidate.exists():
             try:
                 return (
-                    tf.keras.models.load_model(
+                    model_loader(
                         str(candidate),
                         compile=False,
                         custom_objects={"Dense": DenseCompat},
@@ -275,11 +285,41 @@ def preprocess(pil_img):
 # ── Helper: predict ───────────────────────────────────────────────────────────
 def predict(model, pil_img):
     tensor = preprocess(pil_img)
-    raw    = model.predict(tensor, verbose=0)[0][0]   # sigmoid output
-    dog_conf = float(raw) * 100
-    cat_conf = 100 - dog_conf
-    label_idx = 1 if dog_conf >= 50 else 0
-    confidence = dog_conf if label_idx == 1 else cat_conf
+    raw_pred = model.predict(tensor, verbose=0)
+    pred = np.asarray(raw_pred).squeeze()
+
+    if pred.ndim == 0:
+        raw = float(pred)
+        dog_conf = raw * 100
+        cat_conf = 100.0 - dog_conf
+        label_idx = 1 if dog_conf >= 50 else 0
+        confidence = dog_conf if label_idx == 1 else cat_conf
+    elif pred.ndim == 1 and pred.shape[0] == 1:
+        raw = float(pred[0])
+        dog_conf = raw * 100
+        cat_conf = 100.0 - dog_conf
+        label_idx = 1 if dog_conf >= 50 else 0
+        confidence = dog_conf if label_idx == 1 else cat_conf
+    elif pred.ndim == 1 and pred.shape[0] == 2:
+        cat_conf = float(pred[0]) * 100
+        dog_conf = float(pred[1]) * 100
+        label_idx = int(np.argmax(pred))
+        confidence = max(cat_conf, dog_conf)
+    else:
+        # Fallback for unexpected shapes
+        pred = np.atleast_1d(pred)
+        if pred.size == 2:
+            cat_conf = float(pred.flatten()[0]) * 100
+            dog_conf = float(pred.flatten()[1]) * 100
+            label_idx = int(np.argmax(pred))
+            confidence = max(cat_conf, dog_conf)
+        else:
+            raw = float(pred.flatten()[0])
+            dog_conf = raw * 100
+            cat_conf = 100.0 - dog_conf
+            label_idx = 1 if dog_conf >= 50 else 0
+            confidence = dog_conf if label_idx == 1 else cat_conf
+
     return label_idx, confidence, cat_conf, dog_conf
 
 
