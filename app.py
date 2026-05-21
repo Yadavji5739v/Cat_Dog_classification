@@ -25,7 +25,7 @@ def load_model():
     ]
     for p in paths:
         if os.path.exists(p):
-            return tf.keras.models.load_model(p), p
+            return tf.keras.models.load_model(p, compile=False), p
     return None, None
 
 
